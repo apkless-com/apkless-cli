@@ -99,6 +99,12 @@ var phoneCreateCmd = &cobra.Command{
 				serverURL,
 			))
 		fmt.Fprintln(os.Stderr, box)
+
+		// Save as default context
+		r, _ := apiRequest("GET", "/v1/phones/"+phoneID, nil)
+		token, _ := r["server_token"].(string)
+		saveContext(Context{PhoneID: phoneID, ServerURL: serverURL, Token: token})
+		fmt.Fprintf(os.Stderr, "\n  %s Set as default phone\n", dim.Render("ℹ"))
 	},
 }
 
@@ -134,7 +140,7 @@ var phoneListCmd = &cobra.Command{
 			expires, _ := p["expires_at"].(string)
 
 			rows = append(rows, []string{
-				id[:8] + "...",
+				id,
 				statusStyle(status),
 				region,
 				timeAgo(created),
@@ -238,6 +244,24 @@ var phoneConnectCmd = &cobra.Command{
 	},
 }
 
+var phoneUseCmd = &cobra.Command{
+	Use:   "use <phone-id>",
+	Short: "Set default phone for subsequent commands",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		// Verify phone exists and get connection info
+		result, err := apiRequest("GET", "/v1/phones/"+args[0], nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+		serverURL, _ := result["server_url"].(string)
+		token, _ := result["server_token"].(string)
+		saveContext(Context{PhoneID: args[0], ServerURL: serverURL, Token: token})
+		fmt.Fprintf(os.Stderr, "  %s Default phone set to %s\n", success, cyan.Render(args[0][:8]+"..."))
+	},
+}
+
 func init() {
 	phoneCreateCmd.Flags().String("region", "beijing", "Region")
 	phoneCreateCmd.Flags().Bool("wait", true, "Wait for phone to be ready")
@@ -248,4 +272,5 @@ func init() {
 	phoneCmd.AddCommand(phoneShowCmd)
 	phoneCmd.AddCommand(phoneDestroyCmd)
 	phoneCmd.AddCommand(phoneConnectCmd)
+	phoneCmd.AddCommand(phoneUseCmd)
 }

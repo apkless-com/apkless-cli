@@ -136,6 +136,7 @@ func (m spinnerModel) View() string {
 
 // runWithSpinner runs an action with a spinner animation
 func runWithSpinner(msg string, action func() (string, error)) (string, error) {
+	// Try TUI spinner, fallback to simple output if no TTY
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
@@ -149,7 +150,15 @@ func runWithSpinner(msg string, action func() (string, error)) (string, error) {
 	p := tea.NewProgram(model, tea.WithOutput(os.Stderr))
 	finalModel, err := p.Run()
 	if err != nil {
-		return "", err
+		// Fallback: no TTY available, run without spinner
+		fmt.Fprintf(os.Stderr, "  … %s\n", msg)
+		result, actionErr := action()
+		if actionErr != nil {
+			fmt.Fprintf(os.Stderr, "  %s %s: %v\n", fail, msg, actionErr)
+		} else {
+			fmt.Fprintf(os.Stderr, "  %s %s\n", success, msg)
+		}
+		return result, actionErr
 	}
 
 	m := finalModel.(spinnerModel)

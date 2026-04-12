@@ -15,19 +15,28 @@ var captureCmd = &cobra.Command{
 }
 
 var captureStartCmd = &cobra.Command{
-	Use:   "start <phone-id> <package>",
+	Use:   "start [phone-id] <package>",
 	Short: "Start capturing traffic from an app",
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
-		serverURL, token, err := getPhoneConnection(args[0])
+		var phoneID, pkg string
+		if len(args) == 2 {
+			phoneID = args[0]
+			pkg = args[1]
+		} else {
+			phoneID = resolvePhoneID(nil, 0)
+			pkg = args[0]
+		}
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
 			os.Exit(1)
 		}
 
-		_, err = runWithSpinner("Starting capture for "+cyan.Render(args[1]), func() (string, error) {
+		_, err = runWithSpinner("Starting capture for "+cyan.Render(pkg), func() (string, error) {
 			_, err := serverRequest(serverURL, token, "POST", "/capture", map[string]string{
-				"package": args[1],
+				"package": pkg,
 			})
 			return "", err
 		})
@@ -41,11 +50,13 @@ var captureStartCmd = &cobra.Command{
 }
 
 var captureStopCmd = &cobra.Command{
-	Use:   "stop <phone-id>",
+	Use:   "stop [phone-id]",
 	Short: "Stop capturing",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		serverURL, token, err := getPhoneConnection(args[0])
+		phoneID := resolvePhoneID(args, 0)
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
 			os.Exit(1)
@@ -62,11 +73,13 @@ var captureStopCmd = &cobra.Command{
 }
 
 var captureStatusCmd = &cobra.Command{
-	Use:   "status <phone-id>",
+	Use:   "status [phone-id]",
 	Short: "Show capture status",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		serverURL, token, err := getPhoneConnection(args[0])
+		phoneID := resolvePhoneID(args, 0)
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
 			os.Exit(1)
@@ -100,19 +113,33 @@ var captureStatusCmd = &cobra.Command{
 }
 
 var captureFlowsCmd = &cobra.Command{
-	Use:   "flows <phone-id> [flow-id]",
+	Use:   "flows [phone-id] [flow-id]",
 	Short: "List or show captured traffic",
-	Args:  cobra.RangeArgs(1, 2),
+	Args:  cobra.MaximumNArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		serverURL, token, err := getPhoneConnection(args[0])
+		// Detect if first arg is a flow ID (short) or phone ID (UUID)
+		var phoneID string
+		var flowID string
+		for _, a := range args {
+			if len(a) == 36 && a[8] == '-' {
+				phoneID = a
+			} else if len(a) > 0 {
+				flowID = a
+			}
+		}
+		if phoneID == "" {
+			phoneID = resolvePhoneID(nil, 0)
+		}
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
 			os.Exit(1)
 		}
 
 		// Single flow detail
-		if len(args) == 2 {
-			data, err := serverRequest(serverURL, token, "GET", "/flows/"+args[1], nil)
+		if flowID != "" {
+			data, err := serverRequest(serverURL, token, "GET", "/flows/"+flowID, nil)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
 				os.Exit(1)
@@ -214,11 +241,13 @@ var captureFlowsCmd = &cobra.Command{
 }
 
 var captureClearCmd = &cobra.Command{
-	Use:   "clear <phone-id>",
+	Use:   "clear [phone-id]",
 	Short: "Clear all captured traffic",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		serverURL, token, err := getPhoneConnection(args[0])
+		phoneID := resolvePhoneID(args, 0)
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
 			os.Exit(1)

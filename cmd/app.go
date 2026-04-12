@@ -19,11 +19,13 @@ var appCmd = &cobra.Command{
 }
 
 var appListCmd = &cobra.Command{
-	Use:   "list <phone-id>",
+	Use:   "list [phone-id]",
 	Short: "List installed apps",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		serverURL, token, err := getPhoneConnection(args[0])
+		phoneID := resolvePhoneID(args, 0)
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -49,17 +51,24 @@ var appListCmd = &cobra.Command{
 }
 
 var appInstallCmd = &cobra.Command{
-	Use:   "install <phone-id> <apk-path-or-url>",
+	Use:   "install [phone-id] <apk-path-or-url>",
 	Short: "Install an APK",
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
-		serverURL, token, err := getPhoneConnection(args[0])
+		var phoneID, source string
+		if len(args) == 2 {
+			phoneID = args[0]
+			source = args[1]
+		} else {
+			phoneID = resolvePhoneID(nil, 0)
+			source = args[0]
+		}
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-
-		source := args[1]
 
 		// URL install
 		if len(source) > 4 && (source[:4] == "http") {
@@ -108,17 +117,26 @@ var appInstallCmd = &cobra.Command{
 }
 
 var appUninstallCmd = &cobra.Command{
-	Use:   "uninstall <phone-id> <package>",
+	Use:   "uninstall [phone-id] <package>",
 	Short: "Uninstall an app",
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
-		serverURL, token, err := getPhoneConnection(args[0])
+		var phoneID, pkg string
+		if len(args) == 2 {
+			phoneID = args[0]
+			pkg = args[1]
+		} else {
+			phoneID = resolvePhoneID(nil, 0)
+			pkg = args[0]
+		}
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 
-		data, err := serverRequest(serverURL, token, "DELETE", "/apps/"+args[1], nil)
+		data, err := serverRequest(serverURL, token, "DELETE", "/apps/"+pkg, nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
