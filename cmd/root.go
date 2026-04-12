@@ -13,7 +13,7 @@ var apiKey string
 var rootCmd = &cobra.Command{
 	Use:   "apkless",
 	Short: "APKless — Cloud Android packet capture",
-	Long:  "Capture HTTP/HTTPS traffic from any Android app in the cloud.",
+	Long:  "Android HTTPS traffic capture API — no device, no root, no setup.",
 }
 
 func Execute() error {

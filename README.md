@@ -1,6 +1,6 @@
 # APKless CLI
 
-Capture HTTP/HTTPS traffic from any Android app in the cloud.
+Android HTTPS traffic capture API — no device, no root, no setup.
 
 ## Install
 
