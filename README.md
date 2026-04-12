@@ -5,7 +5,7 @@ Capture HTTP/HTTPS traffic from any Android app in the cloud.
 ## Install
 
 ```bash
-curl -fsSL https://apkless.com/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/apkless/apkless-cli/main/install.sh | sh
 ```
 
 Or download from [Releases](https://github.com/apkless/apkless-cli/releases).
