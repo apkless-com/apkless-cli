@@ -1,11 +1,11 @@
 #!/bin/sh
 #
 # APKless CLI installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/apkless/apkless-cli/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/apkless-com/apkless-cli/main/install.sh | sh
 #
 set -e
 
-REPO="apkless/apkless-cli"
+REPO="apkless-com/apkless-cli"
 INSTALL_DIR="/usr/local/bin"
 BINARY="apkless"
 
