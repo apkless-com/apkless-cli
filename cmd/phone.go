@@ -6,20 +6,11 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
-
-func runCommand(name string, args ...string) {
-	c := exec.Command(name, args...)
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	c.Stdin = os.Stdin
-	c.Run()
-}
 
 var phoneCmd = &cobra.Command{
 	Use:   "phone",
@@ -205,44 +196,6 @@ var phoneDestroyCmd = &cobra.Command{
 	},
 }
 
-var phoneConnectCmd = &cobra.Command{
-	Use:   "connect <phone-id>",
-	Short: "Connect to phone via ADB + scrcpy",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		result, err := apiRequest("GET", "/v1/phones/"+args[0], nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
-			os.Exit(1)
-		}
-
-		serverURL, _ := result["server_url"].(string)
-		if serverURL == "" {
-			fmt.Fprintf(os.Stderr, "  %s Phone not ready\n", fail)
-			os.Exit(1)
-		}
-
-		ip := serverURL[7:]
-		for i := len(ip) - 1; i >= 0; i-- {
-			if ip[i] == ':' {
-				ip = ip[:i]
-				break
-			}
-		}
-
-		addr := ip + ":5555"
-		fmt.Printf("\n  %s  %s\n", dim.Render("ADB"), cyan.Render(addr))
-		fmt.Printf("\n  Run:\n")
-		fmt.Printf("  %s\n", bold.Render("adb connect "+addr))
-		fmt.Printf("  %s\n\n", bold.Render("scrcpy -s "+addr+" -b 2M -m 720 --max-fps 10 --no-audio"))
-
-		doExec, _ := cmd.Flags().GetBool("exec")
-		if doExec {
-			runCommand("adb", "connect", addr)
-			runCommand("scrcpy", "-s", addr, "-b", "2M", "-m", "720", "--max-fps", "10", "--no-audio")
-		}
-	},
-}
 
 var phoneUseCmd = &cobra.Command{
 	Use:   "use <phone-id>",
@@ -265,12 +218,9 @@ var phoneUseCmd = &cobra.Command{
 func init() {
 	phoneCreateCmd.Flags().String("region", "beijing", "Region")
 	phoneCreateCmd.Flags().Bool("wait", true, "Wait for phone to be ready")
-	phoneConnectCmd.Flags().Bool("exec", false, "Auto-run adb + scrcpy")
-
 	phoneCmd.AddCommand(phoneCreateCmd)
 	phoneCmd.AddCommand(phoneListCmd)
 	phoneCmd.AddCommand(phoneShowCmd)
 	phoneCmd.AddCommand(phoneDestroyCmd)
-	phoneCmd.AddCommand(phoneConnectCmd)
 	phoneCmd.AddCommand(phoneUseCmd)
 }
