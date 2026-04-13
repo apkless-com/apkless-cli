@@ -22,11 +22,12 @@ var phoneCreateCmd = &cobra.Command{
 	Short: "Create a new cloud phone",
 	Run: func(cmd *cobra.Command, args []string) {
 		region, _ := cmd.Flags().GetString("region")
+		hours, _ := cmd.Flags().GetInt("hours")
 
 		// Step 1: Create
 		var phoneID string
-		_, err := runWithSpinner("Creating phone in "+cyan.Render(region), func() (string, error) {
-			result, err := apiRequest("POST", "/v1/phones", map[string]string{"region": region})
+		_, err := runWithSpinner(fmt.Sprintf("Creating phone in %s (%dh)", cyan.Render(region), hours), func() (string, error) {
+			result, err := apiRequest("POST", "/v1/phones", map[string]interface{}{"region": region, "hours": hours})
 			if err != nil {
 				return "", err
 			}
@@ -215,7 +216,8 @@ var phoneUseCmd = &cobra.Command{
 }
 
 func init() {
-	phoneCreateCmd.Flags().String("region", "beijing", "Region")
+	phoneCreateCmd.Flags().String("region", "beijing", "Region (e.g. beijing, ap-southeast-1, us-east-1)")
+	phoneCreateCmd.Flags().Int("hours", 1, "Hours to allocate (1-24)")
 	phoneCreateCmd.Flags().Bool("wait", true, "Wait for phone to be ready")
 	phoneCmd.AddCommand(phoneCreateCmd)
 	phoneCmd.AddCommand(phoneListCmd)
