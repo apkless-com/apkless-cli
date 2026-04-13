@@ -162,8 +162,6 @@ var phoneShowCmd = &cobra.Command{
 		region, _ := result["region"].(string)
 		created, _ := result["created_at"].(string)
 		expires, _ := result["expires_at"].(string)
-		serverURL, _ := result["server_url"].(string)
-
 		fmt.Println()
 		printKV(
 			"Phone ID", id,
@@ -172,8 +170,9 @@ var phoneShowCmd = &cobra.Command{
 			"Created", timeAgo(created),
 			"Expires", expiresIn(expires),
 		)
-		if serverURL != "" {
-			printKV("Server", serverURL)
+		webURL, _ := result["web_url"].(string)
+		if webURL != "" {
+			printKV("Web", cyan.Render(webURL))
 		}
 		fmt.Println()
 	},
