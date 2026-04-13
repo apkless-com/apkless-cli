@@ -207,39 +207,36 @@ func renderTable(columns []string, rows [][]string) string {
 
 // ── Time helpers ──
 
-func timeAgo(t string) string {
-	parsed, err := time.Parse(time.RFC3339, t)
-	if err != nil {
-		// Try with fractional seconds
-		parsed, err = time.Parse("2006-01-02T15:04:05.999999-07:00", t)
-		if err != nil {
-			return t
+func parseTime(t string) (time.Time, error) {
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05.999999-07:00",
+		"2006-01-02T15:04:05",
+	} {
+		if parsed, err := time.Parse(layout, t); err == nil {
+			return parsed, nil
 		}
 	}
-	d := time.Since(parsed)
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	}
+	return time.Time{}, fmt.Errorf("unknown format")
 }
 
-func expiresIn(t string) string {
-	parsed, err := time.Parse(time.RFC3339, t)
+func formatTime(t string) string {
+	parsed, err := parseTime(t)
 	if err != nil {
-		parsed, _ = time.Parse("2006-01-02T15:04:05.999999-07:00", t)
+		return t
 	}
-	d := time.Until(parsed)
-	if d < 0 {
-		return red.Render("expired")
+	return parsed.Local().Format("2006-01-02 15:04")
+}
+
+func formatExpiry(t string) string {
+	parsed, err := parseTime(t)
+	if err != nil {
+		return t
 	}
-	if d < time.Hour {
-		return yellow.Render(fmt.Sprintf("%dm left", int(d.Minutes())))
+	ts := parsed.Local().Format("2006-01-02 15:04")
+	if time.Until(parsed) < 0 {
+		return red.Render(ts + " (expired)")
 	}
-	return green.Render(fmt.Sprintf("%dh %dm left", int(d.Hours()), int(d.Minutes())%60))
+	return ts
 }

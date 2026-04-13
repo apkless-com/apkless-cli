@@ -134,8 +134,8 @@ var phoneListCmd = &cobra.Command{
 				id,
 				statusStyle(status),
 				region,
-				timeAgo(created),
-				expiresIn(expires),
+				formatTime(created),
+				formatExpiry(expires),
 			})
 		}
 
@@ -167,8 +167,8 @@ var phoneShowCmd = &cobra.Command{
 			"Phone ID", id,
 			"Status", statusStyle(status),
 			"Region", region,
-			"Created", timeAgo(created),
-			"Expires", expiresIn(expires),
+			"Created", formatTime(created),
+			"Expires", formatExpiry(expires),
 		)
 		webURL, _ := result["web_url"].(string)
 		if webURL != "" {
