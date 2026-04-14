@@ -3,11 +3,51 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
+
+// flowToCurl converts a flow detail to a cURL command
+func flowToCurl(flow map[string]interface{}) string {
+	req, _ := flow["request"].(map[string]interface{})
+	if req == nil {
+		return ""
+	}
+	method, _ := req["method"].(string)
+	u, _ := req["url"].(string)
+	body, _ := req["body"].(string)
+
+	parts := []string{"curl"}
+	if method != "" && method != "GET" {
+		parts = append(parts, "-X", method)
+	}
+
+	if headers, ok := req["headers"].([]interface{}); ok {
+		for _, h := range headers {
+			pair, _ := h.([]interface{})
+			if len(pair) == 2 {
+				k := fmt.Sprint(pair[0])
+				v := fmt.Sprint(pair[1])
+				if strings.EqualFold(k, "host") || strings.EqualFold(k, "content-length") {
+					continue
+				}
+				parts = append(parts, "-H", fmt.Sprintf("'%s: %s'", k, v))
+			}
+		}
+	}
+
+	if body != "" {
+		parts = append(parts, "-d", fmt.Sprintf("'%s'", strings.ReplaceAll(body, "'", "\\'")))
+	}
+
+	parts = append(parts, fmt.Sprintf("'%s'", u))
+	return strings.Join(parts, " ")
+}
 
 var captureCmd = &cobra.Command{
 	Use:   "capture",
@@ -117,7 +157,6 @@ var captureFlowsCmd = &cobra.Command{
 	Short: "List or show captured traffic",
 	Args:  cobra.MaximumNArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		// Detect if first arg is a flow ID (short) or phone ID (UUID)
 		var phoneID string
 		var flowID string
 		for _, a := range args {
@@ -137,6 +176,8 @@ var captureFlowsCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		format, _ := cmd.Flags().GetString("format")
+
 		// Single flow detail
 		if flowID != "" {
 			data, err := serverRequest(serverURL, token, "GET", "/flows/"+flowID, nil)
@@ -148,7 +189,17 @@ var captureFlowsCmd = &cobra.Command{
 			var flow map[string]interface{}
 			json.Unmarshal(data, &flow)
 
-			url, _ := flow["url"].(string)
+			if format == "curl" {
+				fmt.Println(flowToCurl(flow))
+				return
+			}
+			if format == "json" {
+				b, _ := json.MarshalIndent(flow, "", "  ")
+				fmt.Println(string(b))
+				return
+			}
+
+			u, _ := flow["url"].(string)
 			method, _ := flow["method"].(string)
 			status, _ := flow["status"].(float64)
 			reason, _ := flow["reason"].(string)
@@ -156,21 +207,38 @@ var captureFlowsCmd = &cobra.Command{
 			headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 			bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 
-			fmt.Printf("\n  %s %s → %s %s\n", methodStyle(method), cyan.Render(url), statusCodeStyle(int(status)), dim.Render(reason))
+			fmt.Printf("\n  %s %s → %s %s\n", methodStyle(method), cyan.Render(u), statusCodeStyle(int(status)), dim.Render(reason))
 
 			if req, ok := flow["request"].(map[string]interface{}); ok {
+				if headers, ok := req["headers"].([]interface{}); ok && len(headers) > 0 {
+					fmt.Printf("\n  %s\n", headerStyle.Render("▶ Request Headers"))
+					for _, h := range headers {
+						if pair, ok := h.([]interface{}); ok && len(pair) == 2 {
+							fmt.Printf("  %s: %s\n", dim.Render(fmt.Sprint(pair[0])), fmt.Sprint(pair[1]))
+						}
+					}
+				}
 				if body, ok := req["body"].(string); ok && body != "" {
 					fmt.Printf("\n  %s\n", headerStyle.Render("▶ Request Body"))
-					fmt.Printf("  %s\n", bodyStyle.Render(body))
+					fmt.Printf("  %s\n", bodyStyle.Render(prettyJSON(body)))
 				}
 			}
 			if resp, ok := flow["response"].(map[string]interface{}); ok {
+				if headers, ok := resp["headers"].([]interface{}); ok && len(headers) > 0 {
+					fmt.Printf("\n  %s\n", headerStyle.Render("◀ Response Headers"))
+					for _, h := range headers {
+						if pair, ok := h.([]interface{}); ok && len(pair) == 2 {
+							fmt.Printf("  %s: %s\n", dim.Render(fmt.Sprint(pair[0])), fmt.Sprint(pair[1]))
+						}
+					}
+				}
 				if body, ok := resp["body"].(string); ok && body != "" {
 					fmt.Printf("\n  %s\n", headerStyle.Render("◀ Response Body"))
-					fmt.Printf("  %s\n", bodyStyle.Render(body))
+					fmt.Printf("  %s\n", bodyStyle.Render(prettyJSON(body)))
 				}
 			}
-			fmt.Println()
+
+			fmt.Printf("\n  %s\n\n", dim.Render("cURL: "+flowToCurl(flow)))
 			return
 		}
 
@@ -181,10 +249,10 @@ var captureFlowsCmd = &cobra.Command{
 
 		path := fmt.Sprintf("/flows?limit=%d", limit)
 		if host != "" {
-			path += "&host=" + host
+			path += "&host=" + url.QueryEscape(host)
 		}
 		if method != "" {
-			path += "&method=" + method
+			path += "&method=" + url.QueryEscape(method)
 		}
 
 		data, err := serverRequest(serverURL, token, "GET", path, nil)
@@ -201,6 +269,12 @@ var captureFlowsCmd = &cobra.Command{
 
 		if len(flows) == 0 {
 			fmt.Println(dim.Render("  No flows captured."))
+			return
+		}
+
+		if format == "json" {
+			b, _ := json.MarshalIndent(result, "", "  ")
+			fmt.Println(string(b))
 			return
 		}
 
@@ -240,6 +314,179 @@ var captureFlowsCmd = &cobra.Command{
 	},
 }
 
+var captureWatchCmd = &cobra.Command{
+	Use:   "watch [phone-id]",
+	Short: "Watch traffic in real-time (like tail -f)",
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		phoneID := resolvePhoneID(args, 0)
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+
+		format, _ := cmd.Flags().GetString("format")
+		seen := make(map[string]bool)
+		fmt.Fprintf(os.Stderr, "  %s Watching traffic (Ctrl+C to stop)\n\n", dim.Render("ℹ"))
+
+		for {
+			data, err := serverRequest(serverURL, token, "GET", "/flows?limit=200", nil)
+			if err != nil {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			var result map[string]interface{}
+			json.Unmarshal(data, &result)
+			flows, _ := result["flows"].([]interface{})
+
+			for _, f := range flows {
+				fl, _ := f.(map[string]interface{})
+				id, _ := fl["id"].(string)
+				if id == "" || seen[id] {
+					continue
+				}
+				seen[id] = true
+
+				m, _ := fl["method"].(string)
+				h, _ := fl["host"].(string)
+				p, _ := fl["path"].(string)
+				s, _ := fl["status"].(float64)
+				ms, _ := fl["duration_ms"].(float64)
+				u, _ := fl["url"].(string)
+
+				if format == "curl" {
+					// Fetch full detail for cURL
+					detail, err := serverRequest(serverURL, token, "GET", "/flows/"+id, nil)
+					if err == nil {
+						var flow map[string]interface{}
+						json.Unmarshal(detail, &flow)
+						fmt.Println(flowToCurl(flow))
+					}
+				} else {
+					fmt.Printf("  %s %-4s %s%s → %s %s\n",
+						dim.Render(id[:8]),
+						methodStyle(m),
+						h, p,
+						statusCodeStyle(int(s)),
+						dim.Render(fmt.Sprintf("%dms", int(ms))),
+					)
+					_ = u
+				}
+			}
+
+			time.Sleep(2 * time.Second)
+		}
+	},
+}
+
+var captureExportCmd = &cobra.Command{
+	Use:   "export [phone-id]",
+	Short: "Export captured traffic as HAR",
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		phoneID := resolvePhoneID(args, 0)
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+
+		output, _ := cmd.Flags().GetString("output")
+
+		// Fetch all flows
+		data, err := serverRequest(serverURL, token, "GET", "/flows?limit=1000", nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+
+		var result map[string]interface{}
+		json.Unmarshal(data, &result)
+		flows, _ := result["flows"].([]interface{})
+
+		// Build HAR
+		var entries []map[string]interface{}
+		for _, f := range flows {
+			fl, _ := f.(map[string]interface{})
+			id, _ := fl["id"].(string)
+			m, _ := fl["method"].(string)
+			u, _ := fl["url"].(string)
+			s, _ := fl["status"].(float64)
+			ms, _ := fl["duration_ms"].(float64)
+
+			// Fetch detail for headers
+			detail, err := serverRequest(serverURL, token, "GET", "/flows/"+id, nil)
+			if err != nil {
+				continue
+			}
+			var flow map[string]interface{}
+			json.Unmarshal(detail, &flow)
+
+			req, _ := flow["request"].(map[string]interface{})
+			resp, _ := flow["response"].(map[string]interface{})
+
+			reqHeaders := convertHeaders(req)
+			respHeaders := convertHeaders(resp)
+			reqBody, _ := req["body"].(string)
+			respBody, _ := resp["body"].(string)
+
+			entry := map[string]interface{}{
+				"startedDateTime": fl["timestamp"],
+				"time":            ms,
+				"request": map[string]interface{}{
+					"method":      m,
+					"url":         u,
+					"httpVersion": "HTTP/1.1",
+					"headers":     reqHeaders,
+					"queryString": []interface{}{},
+					"bodySize":    len(reqBody),
+					"postData": map[string]interface{}{
+						"mimeType": "",
+						"text":     reqBody,
+					},
+				},
+				"response": map[string]interface{}{
+					"status":      int(s),
+					"statusText":  "",
+					"httpVersion": "HTTP/1.1",
+					"headers":     respHeaders,
+					"content": map[string]interface{}{
+						"size":     len(respBody),
+						"mimeType": "",
+						"text":     respBody,
+					},
+					"bodySize": len(respBody),
+				},
+				"timings": map[string]interface{}{
+					"send": 0, "wait": ms, "receive": 0,
+				},
+			}
+			entries = append(entries, entry)
+		}
+
+		har := map[string]interface{}{
+			"log": map[string]interface{}{
+				"version": "1.2",
+				"creator": map[string]string{"name": "APKless", "version": "0.3.0"},
+				"entries": entries,
+			},
+		}
+
+		harJSON, _ := json.MarshalIndent(har, "", "  ")
+
+		if output == "" {
+			fmt.Println(string(harJSON))
+		} else {
+			os.WriteFile(output, harJSON, 0644)
+			fmt.Fprintf(os.Stderr, "  %s Exported %d flows to %s\n", success, len(entries), cyan.Render(output))
+		}
+	},
+}
+
 var captureClearCmd = &cobra.Command{
 	Use:   "clear [phone-id]",
 	Short: "Clear all captured traffic",
@@ -257,14 +504,55 @@ var captureClearCmd = &cobra.Command{
 	},
 }
 
+// helpers
+
+func prettyJSON(s string) string {
+	var v interface{}
+	if json.Unmarshal([]byte(s), &v) == nil {
+		b, err := json.MarshalIndent(v, "  ", "  ")
+		if err == nil {
+			return string(b)
+		}
+	}
+	return s
+}
+
+func convertHeaders(obj map[string]interface{}) []map[string]string {
+	if obj == nil {
+		return nil
+	}
+	headers, ok := obj["headers"].([]interface{})
+	if !ok {
+		return nil
+	}
+	var result []map[string]string
+	for _, h := range headers {
+		pair, _ := h.([]interface{})
+		if len(pair) == 2 {
+			result = append(result, map[string]string{
+				"name":  fmt.Sprint(pair[0]),
+				"value": fmt.Sprint(pair[1]),
+			})
+		}
+	}
+	return result
+}
+
 func init() {
 	captureFlowsCmd.Flags().Int("limit", 50, "Max flows to show")
 	captureFlowsCmd.Flags().String("host", "", "Filter by host")
 	captureFlowsCmd.Flags().String("method", "", "Filter by method")
+	captureFlowsCmd.Flags().String("format", "", "Output format: curl, json")
+
+	captureWatchCmd.Flags().String("format", "", "Output format: curl")
+
+	captureExportCmd.Flags().String("output", "", "Output file (default: stdout)")
 
 	captureCmd.AddCommand(captureStartCmd)
 	captureCmd.AddCommand(captureStopCmd)
 	captureCmd.AddCommand(captureStatusCmd)
 	captureCmd.AddCommand(captureFlowsCmd)
+	captureCmd.AddCommand(captureWatchCmd)
+	captureCmd.AddCommand(captureExportCmd)
 	captureCmd.AddCommand(captureClearCmd)
 }

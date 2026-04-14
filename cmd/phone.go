@@ -379,6 +379,73 @@ var phoneRestartCmd = &cobra.Command{
 	},
 }
 
+var phoneStatusCmd = &cobra.Command{
+	Use:   "status [phone-id]",
+	Short: "Quick status overview of current phone",
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		phoneID := resolvePhoneID(args, 0)
+
+		// Phone info from API
+		result, err := apiRequest("GET", "/v1/phones/"+phoneID, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+
+		status, _ := result["status"].(string)
+		region, _ := result["region"].(string)
+		expires, _ := result["expires_at"].(string)
+		webURL, _ := result["web_url"].(string)
+
+		fmt.Println()
+		printKV(
+			"Phone", phoneID[:12]+"...",
+			"Status", statusStyle(status),
+			"Region", region,
+			"Expires", formatExpiry(expires),
+		)
+		if webURL != "" {
+			printKV("Web", cyan.Render(webURL))
+		}
+
+		// ADB connection
+		ctx := loadContext()
+		if ctx.ADBAddr != "" {
+			out, err := adbCmd("shell", "echo", "ok")
+			if err == nil && strings.Contains(out, "ok") {
+				printKV("ADB", green.Render("● connected")+" "+dim.Render(ctx.ADBAddr))
+			} else {
+				printKV("ADB", red.Render("● disconnected")+" "+dim.Render(ctx.ADBAddr))
+			}
+		} else {
+			printKV("ADB", dim.Render("not connected (run: apkless phone connect)"))
+		}
+
+		// Capture status
+		if status == "ready" {
+			serverURL, _ := result["server_url"].(string)
+			token, _ := result["server_token"].(string)
+			if serverURL != "" && token != "" {
+				capData, err := serverRequest(serverURL, token, "GET", "/capture", nil)
+				if err == nil {
+					var capResult map[string]interface{}
+					json.Unmarshal(capData, &capResult)
+					capStatus, _ := capResult["status"].(string)
+					capPkg, _ := capResult["package"].(string)
+					flowCount, _ := capResult["flow_count"].(float64)
+					if capStatus == "capturing" {
+						printKV("Capture", green.Render("● "+capPkg)+" "+dim.Render(fmt.Sprintf("(%d flows)", int(flowCount))))
+					} else {
+						printKV("Capture", dim.Render("○ idle"))
+					}
+				}
+			}
+		}
+		fmt.Println()
+	},
+}
+
 func init() {
 	phoneCreateCmd.Flags().String("region", "beijing", "Region (e.g. beijing, ap-southeast-1, us-east-1)")
 	phoneCreateCmd.Flags().Int("hours", 1, "Hours to allocate (1-24)")
@@ -386,6 +453,7 @@ func init() {
 	phoneCmd.AddCommand(phoneCreateCmd)
 	phoneCmd.AddCommand(phoneListCmd)
 	phoneCmd.AddCommand(phoneShowCmd)
+	phoneCmd.AddCommand(phoneStatusCmd)
 	phoneCmd.AddCommand(phoneDestroyCmd)
 	phoneCmd.AddCommand(phoneRestartCmd)
 	phoneCmd.AddCommand(phoneConnectCmd)

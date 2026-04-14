@@ -149,6 +149,48 @@ var appShellCmd = &cobra.Command{
 	},
 }
 
+var appPushCmd = &cobra.Command{
+	Use:   "push <local-path> <remote-path>",
+	Short: "Push a file to the phone",
+	Args:  cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		_, err := runWithSpinner("Pushing "+cyan.Render(args[0]), func() (string, error) {
+			out, err := adbCmd("push", args[0], args[1])
+			if err != nil {
+				return "", fmt.Errorf("%s", out)
+			}
+			return out, nil
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+	},
+}
+
+var appPullCmd = &cobra.Command{
+	Use:   "pull <remote-path> [local-path]",
+	Short: "Pull a file from the phone",
+	Args:  cobra.RangeArgs(1, 2),
+	Run: func(cmd *cobra.Command, args []string) {
+		local := "."
+		if len(args) > 1 {
+			local = args[1]
+		}
+		_, err := runWithSpinner("Pulling "+cyan.Render(args[0]), func() (string, error) {
+			out, err := adbCmd("pull", args[0], local)
+			if err != nil {
+				return "", fmt.Errorf("%s", out)
+			}
+			return out, nil
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+	},
+}
+
 func init() {
 	appCmd.AddCommand(appListCmd)
 	appCmd.AddCommand(appInstallCmd)
@@ -156,4 +198,6 @@ func init() {
 	appCmd.AddCommand(appLaunchCmd)
 	appCmd.AddCommand(appScreenshotCmd)
 	appCmd.AddCommand(appShellCmd)
+	appCmd.AddCommand(appPushCmd)
+	appCmd.AddCommand(appPullCmd)
 }
