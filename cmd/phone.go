@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -231,6 +232,87 @@ var phoneUseCmd = &cobra.Command{
 	},
 }
 
+var phoneConnectCmd = &cobra.Command{
+	Use:   "connect [phone-id]",
+	Short: "Connect local ADB to a cloud phone",
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		// Check adb is installed
+		if _, err := exec.LookPath("adb"); err != nil {
+			fmt.Fprintf(os.Stderr, "  %s adb not found. Install Android SDK Platform Tools first.\n", fail)
+			fmt.Fprintf(os.Stderr, "    https://developer.android.com/tools/releases/platform-tools\n")
+			os.Exit(1)
+		}
+
+		phoneID := resolvePhoneID(args, 0)
+		printCurrentPhone(phoneID)
+		serverURL, token, err := getPhoneConnection(phoneID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+
+		// Call /connect to whitelist our IP
+		var result map[string]interface{}
+		_, err = runWithSpinner("Opening ADB access", func() (string, error) {
+			data, err := serverRequest(serverURL, token, "POST", "/connect", nil)
+			if err != nil {
+				return "", err
+			}
+			json.Unmarshal(data, &result)
+			return "", nil
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+
+		adbHost, _ := result["adb_host"].(string)
+		adbPort, _ := result["adb_port"].(float64)
+		clientIP, _ := result["client_ip"].(string)
+		addr := fmt.Sprintf("%s:%d", adbHost, int(adbPort))
+
+		fmt.Fprintf(os.Stderr, "  %s Your IP %s allowed\n", dim.Render("ℹ"), clientIP)
+
+		// Connect ADB
+		_, err = runWithSpinner("Connecting ADB to "+cyan.Render(addr), func() (string, error) {
+			out, err := exec.Command("adb", "connect", addr).CombinedOutput()
+			output := strings.TrimSpace(string(out))
+			if err != nil {
+				return "", fmt.Errorf("%s", output)
+			}
+			if !strings.Contains(output, "connected") {
+				return "", fmt.Errorf("%s", output)
+			}
+			return output, nil
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+
+		fmt.Fprintf(os.Stderr, "\n")
+		box := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("10")).
+			Padding(0, 2).
+			Render(fmt.Sprintf(
+				"%s  ADB connected\n\n"+
+					"  %s  %s\n"+
+					"  %s  %s\n"+
+					"  %s  %s",
+				green.Render("●"),
+				dim.Render("ADB     "),
+				cyan.Render(addr),
+				dim.Render("Shell   "),
+				fmt.Sprintf("adb -s %s shell", addr),
+				dim.Render("Scrcpy  "),
+				fmt.Sprintf("scrcpy -s %s", addr),
+			))
+		fmt.Fprintln(os.Stderr, box)
+	},
+}
+
 var phoneOpenCmd = &cobra.Command{
 	Use:   "open [phone-id]",
 	Short: "Open phone sandbox in browser",
@@ -278,6 +360,7 @@ func init() {
 	phoneCmd.AddCommand(phoneShowCmd)
 	phoneCmd.AddCommand(phoneDestroyCmd)
 	phoneCmd.AddCommand(phoneRestartCmd)
+	phoneCmd.AddCommand(phoneConnectCmd)
 	phoneCmd.AddCommand(phoneOpenCmd)
 	phoneCmd.AddCommand(phoneUseCmd)
 }
