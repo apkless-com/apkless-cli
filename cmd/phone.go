@@ -135,8 +135,25 @@ var phoneListCmd = &cobra.Command{
 		var phones []map[string]interface{}
 		json.Unmarshal(data, &phones)
 
+		// Filter by status
+		active, _ := cmd.Flags().GetBool("active")
+		if active {
+			var filtered []map[string]interface{}
+			for _, p := range phones {
+				s, _ := p["status"].(string)
+				if s == "creating" || s == "ready" {
+					filtered = append(filtered, p)
+				}
+			}
+			phones = filtered
+		}
+
 		if len(phones) == 0 {
-			fmt.Println(dim.Render("  No phones. Create one with: apkless phone create"))
+			if active {
+				fmt.Println(dim.Render("  No active phones."))
+			} else {
+				fmt.Println(dim.Render("  No phones. Create one with: apkless phone create"))
+			}
 			return
 		}
 
@@ -450,6 +467,7 @@ func init() {
 	phoneCreateCmd.Flags().String("region", "beijing", "Region (e.g. beijing, ap-southeast-1, us-east-1)")
 	phoneCreateCmd.Flags().Int("hours", 1, "Hours to allocate (1-24)")
 	phoneCreateCmd.Flags().Bool("wait", true, "Wait for phone to be ready")
+	phoneListCmd.Flags().Bool("active", false, "Show only active phones (creating/ready)")
 	phoneCmd.AddCommand(phoneCreateCmd)
 	phoneCmd.AddCommand(phoneListCmd)
 	phoneCmd.AddCommand(phoneShowCmd)
