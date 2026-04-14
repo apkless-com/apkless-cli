@@ -10,10 +10,13 @@ import (
 var apiBase = "https://api.apkless.com"
 var apiKey string
 
+var Version = "dev"
+
 var rootCmd = &cobra.Command{
-	Use:   "apkless",
-	Short: "APKless — Cloud Android packet capture",
-	Long:  "Cloud Android HTTPS capture — no device, no root, no setup.",
+	Use:     "apkless",
+	Short:   "APKless — Cloud Android packet capture",
+	Long:    "Cloud Android HTTPS capture — no device, no root, no setup.",
+	Version: Version,
 }
 
 func Execute() error {

@@ -6,11 +6,25 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
+
+func openBrowser(url string) error {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("open", url).Start()
+	case "linux":
+		return exec.Command("xdg-open", url).Start()
+	case "windows":
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	}
+	return fmt.Errorf("unsupported platform")
+}
 
 var phoneCmd = &cobra.Command{
 	Use:   "phone",
@@ -75,6 +89,11 @@ var phoneCreateCmd = &cobra.Command{
 		elapsed := time.Since(start).Round(time.Second)
 		fmt.Fprintf(os.Stderr, "\n")
 
+		// Get full details including web_url
+		r, _ := apiRequest("GET", "/v1/phones/"+phoneID, nil)
+		token, _ := r["server_token"].(string)
+		webURL, _ := r["web_url"].(string)
+
 		box := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("10")).
@@ -87,14 +106,11 @@ var phoneCreateCmd = &cobra.Command{
 				bold.Render(elapsed.String()),
 				dim.Render("Phone ID"),
 				phoneID,
-				dim.Render("Server  "),
-				serverURL,
+				dim.Render("Web URL "),
+				cyan.Render(webURL),
 			))
 		fmt.Fprintln(os.Stderr, box)
 
-		// Save as default context
-		r, _ := apiRequest("GET", "/v1/phones/"+phoneID, nil)
-		token, _ := r["server_token"].(string)
 		saveContext(Context{PhoneID: phoneID, ServerURL: serverURL, Token: token})
 		fmt.Fprintf(os.Stderr, "\n  %s Set as default phone\n", dim.Render("ℹ"))
 	},
@@ -215,6 +231,44 @@ var phoneUseCmd = &cobra.Command{
 	},
 }
 
+var phoneOpenCmd = &cobra.Command{
+	Use:   "open [phone-id]",
+	Short: "Open phone sandbox in browser",
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		phoneID := resolvePhoneID(args, 0)
+		result, err := apiRequest("GET", "/v1/phones/"+phoneID, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+		webURL, _ := result["web_url"].(string)
+		if webURL == "" {
+			fmt.Fprintf(os.Stderr, "  %s Phone is not ready yet\n", fail)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "  %s Opening %s\n", success, cyan.Render(webURL))
+		openBrowser(webURL)
+	},
+}
+
+var phoneRestartCmd = &cobra.Command{
+	Use:   "restart <phone-id>",
+	Short: "Restart a cloud phone",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		_, err := runWithSpinner("Restarting "+args[0][:8]+"...", func() (string, error) {
+			_, err := apiRequest("POST", "/v1/phones/"+args[0]+"/restart", nil)
+			return "", err
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "  %s Phone will be available in 1-2 minutes\n", dim.Render("ℹ"))
+	},
+}
+
 func init() {
 	phoneCreateCmd.Flags().String("region", "beijing", "Region (e.g. beijing, ap-southeast-1, us-east-1)")
 	phoneCreateCmd.Flags().Int("hours", 1, "Hours to allocate (1-24)")
@@ -223,5 +277,7 @@ func init() {
 	phoneCmd.AddCommand(phoneListCmd)
 	phoneCmd.AddCommand(phoneShowCmd)
 	phoneCmd.AddCommand(phoneDestroyCmd)
+	phoneCmd.AddCommand(phoneRestartCmd)
+	phoneCmd.AddCommand(phoneOpenCmd)
 	phoneCmd.AddCommand(phoneUseCmd)
 }
