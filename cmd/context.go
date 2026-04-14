@@ -4,14 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
-// Context stores the current default phone ID
+// Context stores the current default phone ID and connection info
 type Context struct {
 	PhoneID   string `json:"phone_id"`
 	ServerURL string `json:"server_url"`
 	Token     string `json:"token"`
+	ADBAddr   string `json:"adb_addr,omitempty"` // e.g. "1.2.3.4:15555"
 }
 
 func contextPath() string {
@@ -48,6 +51,24 @@ func resolvePhoneID(args []string, pos int) string {
 	fmt.Fprintln(os.Stderr, "  "+fail.Render("")+" No phone specified. Use <phone-id> or set default with: apkless phone use <id>")
 	os.Exit(1)
 	return ""
+}
+
+// requireADB returns the ADB address from context, exits if not connected
+func requireADB() string {
+	ctx := loadContext()
+	if ctx.ADBAddr == "" {
+		fmt.Fprintln(os.Stderr, "  "+fail.Render("")+" ADB not connected. Run first: apkless phone connect")
+		os.Exit(1)
+	}
+	return ctx.ADBAddr
+}
+
+// adbCmd runs an adb command against the connected device
+func adbCmd(args ...string) (string, error) {
+	addr := requireADB()
+	allArgs := append([]string{"-s", addr}, args...)
+	out, err := exec.Command("adb", allArgs...).CombinedOutput()
+	return strings.TrimSpace(string(out)), err
 }
 
 // printCurrentPhone prints a dim line showing which phone is being used

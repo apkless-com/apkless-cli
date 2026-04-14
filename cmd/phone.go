@@ -252,10 +252,33 @@ var phoneConnectCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		// Detect our public IP
+		var myIP string
+		_, err = runWithSpinner("Detecting your public IP", func() (string, error) {
+			for _, svc := range []string{"https://ifconfig.me", "https://api.ipify.org", "https://ip.sb"} {
+				resp, e := http.Get(svc)
+				if e != nil {
+					continue
+				}
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				ip := strings.TrimSpace(string(body))
+				if ip != "" && !strings.Contains(ip, "<") {
+					myIP = ip
+					return ip, nil
+				}
+			}
+			return "", fmt.Errorf("cannot detect public IP")
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %v\n", fail, err)
+			os.Exit(1)
+		}
+
 		// Call /connect to whitelist our IP
 		var result map[string]interface{}
-		_, err = runWithSpinner("Opening ADB access", func() (string, error) {
-			data, err := serverRequest(serverURL, token, "POST", "/connect", nil)
+		_, err = runWithSpinner("Opening ADB access for "+myIP, func() (string, error) {
+			data, err := serverRequest(serverURL, token, "POST", "/connect", map[string]string{"ip": myIP})
 			if err != nil {
 				return "", err
 			}
@@ -310,6 +333,11 @@ var phoneConnectCmd = &cobra.Command{
 				fmt.Sprintf("scrcpy -s %s", addr),
 			))
 		fmt.Fprintln(os.Stderr, box)
+
+		// Save ADB addr to context
+		ctx := loadContext()
+		ctx.ADBAddr = addr
+		saveContext(ctx)
 	},
 }
 
