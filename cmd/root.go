@@ -26,9 +26,26 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&apiKey, "key", "", "API key (or set APKLESS_KEY env)")
 
-	rootCmd.AddCommand(phoneCmd)
-	rootCmd.AddCommand(appCmd)
+	// Help groups
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "device", Title: "Device Management:"},
+		&cobra.Group{ID: "adb", Title: "ADB Operations:"},
+		&cobra.Group{ID: "capture", Title: "Traffic Capture:"},
+	)
+
+	// Device management (top-level)
+	rootCmd.AddCommand(createCmd, lsCmd, showCmd, rmCmd,
+		restartCmd, connectCmd, openCmd, useCmd, statusCmd)
+	// ADB operations (top-level)
+	rootCmd.AddCommand(shellCmd, installCmd, uninstallCmd,
+		launchCmd, appsCmd, screenCmd, pushCmd, pullCmd)
+	// Capture (subcommand group)
 	rootCmd.AddCommand(captureCmd)
+
+	// Hidden legacy groups (backward compat)
+	phoneCmd.Hidden = true
+	appCmd.Hidden = true
+	rootCmd.AddCommand(phoneCmd, appCmd)
 }
 
 func getAPIKey() string {

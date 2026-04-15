@@ -17,53 +17,67 @@ Or download from [Releases](https://github.com/apkless-com/apkless-cli/releases)
 export APKLESS_KEY=apkless_xxxxxxxx
 
 # Create a cloud phone
-apkless phone create
+apkless create
 
 # Install an APK
-apkless app install <phone-id> ./app.apk
+apkless install ./app.apk
 
 # Start capturing traffic
-apkless capture start <phone-id> com.example.app
+apkless capture start com.example.app
 
 # View captured flows
-apkless capture flows <phone-id>
+apkless capture flows
 
 # View flow detail
-apkless capture flows <phone-id> <flow-id>
+apkless capture flows <flow-id>
 
 # Destroy when done
-apkless phone destroy <phone-id>
+apkless rm <phone-id>
 ```
 
 ## Commands
 
-### Phone Management
+### Device Management
 
 ```bash
-apkless phone create [--region beijing]  # Create a cloud phone
-apkless phone list                       # List your phones
-apkless phone show <id>                  # Show phone details
-apkless phone destroy <id>              # Destroy a phone
-apkless phone connect <id> [--exec]     # Get ADB/scrcpy connection info
+apkless create [--region beijing] [--hours 1]  # Create a cloud phone
+apkless ls                                      # List active phones
+apkless ls --all                                # Include destroyed phones
+apkless show <id>                               # Show phone details
+apkless rm <id>                                 # Destroy a phone
+apkless connect [id]                            # Connect local ADB
+apkless open [id]                               # Open sandbox in browser
+apkless use <id>                                # Set as default phone
+apkless status [id]                             # Quick status overview
+apkless restart <id>                            # Restart a phone
 ```
 
-### App Management
+### ADB Operations
 
 ```bash
-apkless app list <id>                     # List installed apps
-apkless app install <id> <apk-or-url>    # Install an APK
-apkless app uninstall <id> <package>     # Uninstall an app
+apkless shell                        # Interactive ADB shell
+apkless shell <phone-id>             # Auto-connect + shell
+apkless shell <command>              # Run a command
+apkless apps                         # List installed apps
+apkless install <apk-path>          # Install an APK
+apkless uninstall <package>          # Uninstall an app
+apkless launch <package>             # Launch an app
+apkless screen [output.png]          # Take a screenshot
+apkless push <local> <remote>        # Push a file
+apkless pull <remote> [local]        # Pull a file
 ```
 
 ### Traffic Capture
 
 ```bash
-apkless capture start <id> <package>     # Start capturing
-apkless capture stop <id>                # Stop capturing
-apkless capture status <id>              # Show capture status
-apkless capture flows <id>              # List captured flows
-apkless capture flows <id> <flow-id>    # Show flow detail
-apkless capture clear <id>              # Clear all flows
+apkless capture start <package>      # Start capturing
+apkless capture stop                 # Stop capturing
+apkless capture status               # Show capture status
+apkless capture flows                # List captured flows
+apkless capture flows <flow-id>      # Show flow detail
+apkless capture watch                # Real-time traffic stream
+apkless capture export [--output f]  # Export as HAR
+apkless capture clear                # Clear all flows
 ```
 
 ### Flags
@@ -86,7 +100,7 @@ export APKLESS_KEY=apkless_xxxxxxxx
 Or pass it directly:
 
 ```bash
-apkless --key apkless_xxxxxxxx phone list
+apkless --key apkless_xxxxxxxx ls
 ```
 
 ## License

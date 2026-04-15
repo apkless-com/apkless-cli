@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,15 +14,21 @@ func newExecCommand(name string, args ...string) *exec.Cmd {
 	return exec.Command(name, args...)
 }
 
+// Legacy group (hidden)
 var appCmd = &cobra.Command{
 	Use:   "app",
-	Short: "Manage apps on a cloud phone (requires: apkless phone connect first)",
+	Short: "Manage apps on a cloud phone",
 }
 
-var appListCmd = &cobra.Command{
-	Use:     "list",
+// UUID pattern for detecting phone IDs
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// ── Top-level commands ──
+
+var appsCmd = &cobra.Command{
+	Use:     "apps",
 	Short:   "List installed third-party apps",
-	Aliases: []string{"ls"},
+	GroupID: "adb",
 	Run: func(cmd *cobra.Command, args []string) {
 		out, err := adbCmd("shell", "pm", "list", "packages", "-3")
 		if err != nil {
@@ -41,18 +48,17 @@ var appListCmd = &cobra.Command{
 	},
 }
 
-var appInstallCmd = &cobra.Command{
-	Use:   "install <apk-path>",
-	Short: "Install an APK file",
-	Args:  cobra.ExactArgs(1),
+var installCmd = &cobra.Command{
+	Use:     "install <apk-path>",
+	Short:   "Install an APK file",
+	Args:    cobra.ExactArgs(1),
+	GroupID: "adb",
 	Run: func(cmd *cobra.Command, args []string) {
 		source := args[0]
-
 		if _, err := os.Stat(source); err != nil {
 			fmt.Fprintf(os.Stderr, "  %s File not found: %s\n", fail, source)
 			os.Exit(1)
 		}
-
 		_, err := runWithSpinner("Installing "+cyan.Render(source), func() (string, error) {
 			out, err := adbCmd("install", "-r", source)
 			if err != nil {
@@ -67,10 +73,11 @@ var appInstallCmd = &cobra.Command{
 	},
 }
 
-var appUninstallCmd = &cobra.Command{
-	Use:   "uninstall <package>",
-	Short: "Uninstall an app",
-	Args:  cobra.ExactArgs(1),
+var uninstallCmd = &cobra.Command{
+	Use:     "uninstall <package>",
+	Short:   "Uninstall an app",
+	Args:    cobra.ExactArgs(1),
+	GroupID: "adb",
 	Run: func(cmd *cobra.Command, args []string) {
 		pkg := args[0]
 		_, err := runWithSpinner("Uninstalling "+cyan.Render(pkg), func() (string, error) {
@@ -87,10 +94,11 @@ var appUninstallCmd = &cobra.Command{
 	},
 }
 
-var appLaunchCmd = &cobra.Command{
-	Use:   "launch <package>",
-	Short: "Launch an app",
-	Args:  cobra.ExactArgs(1),
+var launchCmd = &cobra.Command{
+	Use:     "launch <package>",
+	Short:   "Launch an app",
+	Args:    cobra.ExactArgs(1),
+	GroupID: "adb",
 	Run: func(cmd *cobra.Command, args []string) {
 		pkg := args[0]
 		out, err := adbCmd("shell", "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1")
@@ -102,10 +110,11 @@ var appLaunchCmd = &cobra.Command{
 	},
 }
 
-var appScreenshotCmd = &cobra.Command{
-	Use:   "screenshot [output-path]",
-	Short: "Take a screenshot",
-	Args:  cobra.MaximumNArgs(1),
+var screenCmd = &cobra.Command{
+	Use:     "screen [output-path]",
+	Short:   "Take a screenshot",
+	Args:    cobra.MaximumNArgs(1),
+	GroupID: "adb",
 	Run: func(cmd *cobra.Command, args []string) {
 		outPath := "screenshot.png"
 		if len(args) > 0 {
@@ -127,10 +136,24 @@ var appScreenshotCmd = &cobra.Command{
 	},
 }
 
-var appShellCmd = &cobra.Command{
-	Use:   "shell [command...]",
-	Short: "Open ADB shell or run a command",
+var shellCmd = &cobra.Command{
+	Use:     "shell [phone-id | command...]",
+	Short:   "Open ADB shell or run a command",
+	GroupID: "adb",
+	DisableFlagParsing: true,
 	Run: func(cmd *cobra.Command, args []string) {
+		// If first arg looks like a UUID, auto-connect then open shell
+		if len(args) > 0 && uuidPattern.MatchString(args[0]) {
+			runConnect(cmd, args[:1])
+			addr := requireADB()
+			c := newExecCommand("adb", "-s", addr, "shell")
+			c.Stdin = os.Stdin
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			c.Run()
+			return
+		}
+
 		addr := requireADB()
 		if len(args) == 0 {
 			c := newExecCommand("adb", "-s", addr, "shell")
@@ -149,10 +172,11 @@ var appShellCmd = &cobra.Command{
 	},
 }
 
-var appPushCmd = &cobra.Command{
-	Use:   "push <local-path> <remote-path>",
-	Short: "Push a file to the phone",
-	Args:  cobra.ExactArgs(2),
+var pushCmd = &cobra.Command{
+	Use:     "push <local-path> <remote-path>",
+	Short:   "Push a file to the phone",
+	Args:    cobra.ExactArgs(2),
+	GroupID: "adb",
 	Run: func(cmd *cobra.Command, args []string) {
 		_, err := runWithSpinner("Pushing "+cyan.Render(args[0]), func() (string, error) {
 			out, err := adbCmd("push", args[0], args[1])
@@ -168,10 +192,11 @@ var appPushCmd = &cobra.Command{
 	},
 }
 
-var appPullCmd = &cobra.Command{
-	Use:   "pull <remote-path> [local-path]",
-	Short: "Pull a file from the phone",
-	Args:  cobra.RangeArgs(1, 2),
+var pullCmd = &cobra.Command{
+	Use:     "pull <remote-path> [local-path]",
+	Short:   "Pull a file from the phone",
+	Args:    cobra.RangeArgs(1, 2),
+	GroupID: "adb",
 	Run: func(cmd *cobra.Command, args []string) {
 		local := "."
 		if len(args) > 1 {
@@ -192,12 +217,15 @@ var appPullCmd = &cobra.Command{
 }
 
 func init() {
-	appCmd.AddCommand(appListCmd)
-	appCmd.AddCommand(appInstallCmd)
-	appCmd.AddCommand(appUninstallCmd)
-	appCmd.AddCommand(appLaunchCmd)
-	appCmd.AddCommand(appScreenshotCmd)
-	appCmd.AddCommand(appShellCmd)
-	appCmd.AddCommand(appPushCmd)
-	appCmd.AddCommand(appPullCmd)
+	// Legacy aliases under "app" subcommand
+	appCmd.AddCommand(
+		&cobra.Command{Use: "list", Short: appsCmd.Short, Aliases: []string{"ls"}, Run: appsCmd.Run},
+		&cobra.Command{Use: "install", Short: installCmd.Short, Args: cobra.ExactArgs(1), Run: installCmd.Run},
+		&cobra.Command{Use: "uninstall", Short: uninstallCmd.Short, Args: cobra.ExactArgs(1), Run: uninstallCmd.Run},
+		&cobra.Command{Use: "launch", Short: launchCmd.Short, Args: cobra.ExactArgs(1), Run: launchCmd.Run},
+		&cobra.Command{Use: "screenshot", Short: screenCmd.Short, Args: cobra.MaximumNArgs(1), Run: screenCmd.Run},
+		&cobra.Command{Use: "shell", Short: shellCmd.Short, Run: shellCmd.Run},
+		&cobra.Command{Use: "push", Short: pushCmd.Short, Args: cobra.ExactArgs(2), Run: pushCmd.Run},
+		&cobra.Command{Use: "pull", Short: pullCmd.Short, Args: cobra.RangeArgs(1, 2), Run: pullCmd.Run},
+	)
 }

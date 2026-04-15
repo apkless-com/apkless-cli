@@ -50,8 +50,9 @@ func flowToCurl(flow map[string]interface{}) string {
 }
 
 var captureCmd = &cobra.Command{
-	Use:   "capture",
-	Short: "Capture HTTP/HTTPS traffic",
+	Use:     "capture",
+	Short:   "Capture HTTP/HTTPS traffic",
+	GroupID: "capture",
 }
 
 var captureStartCmd = &cobra.Command{
